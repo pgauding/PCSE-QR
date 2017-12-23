@@ -1,0 +1,431 @@
+%% LyX 2.2.3 created this file.  For more info, see http://www.lyx.org/.
+%% Do not edit unless you really know what you are doing.
+\documentclass[11pt,english]{scrartcl}
+\usepackage{lmodern}
+\renewcommand{\sfdefault}{lmss}
+\renewcommand{\ttdefault}{lmtt}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[letterpaper]{geometry}
+\geometry{verbose,tmargin=1in,bmargin=1in,lmargin=1in,rmargin=1in}
+\setlength{\parindent}{0.5in}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{setspace}
+\usepackage[authoryear]{natbib}
+\doublespacing
+
+\makeatletter
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% LyX specific LaTeX commands.
+%% Because html converters don't know tabularnewline
+\providecommand{\tabularnewline}{\\}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Textclass specific LaTeX commands.
+\providecommand*{\code}[1]{\texttt{#1}}
+
+\@ifundefined{date}{}{\date{}}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% User specified LaTeX commands.
+\usepackage{multicol}
+
+\usepackage{graphicx}
+\usepackage{listings}
+
+\usepackage{color}
+\lstset{tabsize=2, breaklines=true, 
+  breakatwhitespace=true,
+  language=R,
+  captionpos=b,
+  frame=single,
+  framerule=0.2pt,
+  framesep=1pt,
+  numbers=left,
+  numberstyle=\tiny,
+  numbersep=5pt,
+  showstringspaces=false,
+  basicstyle=\footnotesize,
+  identifierstyle=\color{magenta},
+  keywordstyle=\bfseries,
+  commentstyle=\color{darkgreen},
+  stringstyle=\color{red},
+  backgroundcolor=\color[gray]{0.97}
+}
+
+\usepackage{caption}
+
+\makeatother
+
+\usepackage{babel}
+\begin{document}
+
+\title{Memory Management for Large \emph{N x T} Matrices}
+
+\subtitle{Sparse Matrices in the \code{pcse} Package}
+
+\subtitle{POLS 904 - Paul Johnson - FS17 - University of Kansas}
+
+\author{Patrick John Gauding}
+
+\date{\today}
+\maketitle
+\begin{abstract}
+\begin{singlespace}
+This project demonstrates the feasibility of using sparse matrices
+to improve memory management and performance in R. Specifically, I
+modify and extend the capabilities of the \code{pcse} package by
+implementing sparse capabilities provided by the \code{Matrix} package.
+I identify a recurring issue in processing large \emph{N x T} matrices
+in which the package fails to process the required Kronecker multiplication
+and crashes R. Then, I identify the matrix storage structure used
+in the original package, which I hypothesize causes memory overload.
+I provide background on the sparse matrix alternative, and provide
+examples of implementation. I find notable improvements in both dimensional
+size and speed capabilities.
+\end{singlespace}
+\end{abstract}
+
+\section{Panel-corrected Standard Errors and The Purpose of the \protect\code{pcse}
+Package}
+
+The \code{pcse} package is an implementation of the panel-corrected
+standard errors technique proposed by Beck and Katz \citeyearpar{beck1995and,beck2006random}.
+They argue that previous approaches to dealing with the inherent spatial
+and temporal correlations in time-series cross-sectional data, such
+as the \citet{parks1967efficient}feasible generalized least squares
+(FGLS) approach, produce standard errors which are inherently incorrect.
+This is because of the assumption of GLS that the error generating
+process is known is impossible to fulfill in practice. The Parks approach
+assumes an AR1 autocorrelation and unit-specific serial correlation.
+Beck and Katz find these assumptions problematic, in that ``the 'interesting'
+parameters of the model, $\beta$, do not vary across units; this
+assumption of pooling is at the heart of TSCS analysis.'' The correction
+model makes blunt assumptions about the characteristics of the error
+relationships, which may or may not exist in the data.
+
+Beck and Katz instead propose using ordinary least squares with correction
+based on a block matrix of contemporaneous covariances. This model
+offers several advantages, primarily stemming from the spherical assumption
+of errors in OLS. These errors are consistent, and so provide a less
+biased (i.e. more correct) correction matrix. The upshot is that this
+technique is the error corrections are derived from the relationships
+of the errors themselves, instead of assuming relationships, as results
+from cases in which PCSEs are not necessary match OLS estimates (\citealp[641]{beck1995and}).
+
+\section{Identifying the Issue}
+
+The \code{pcse} package successfully estimates PCSEs for datasets
+of sizes practical for many applications in political science, particularly
+country-year data. However, the package breaks down and causes the
+R session to crash for larger datasets (greater than roughly \emph{250 x 250}).
+Additionally, the package is impractically slow as the matrix becomes
+larger, taking roughly 2.75 minutes to calculate a near-maximum (\emph{250 x 250})
+successful run. My assumption is that the issue causing the package
+to both run slowly and to crash at higher levels of \emph{N x T}
+are related. Poor memory management could be expected to cause both
+the length of the calculation and the R session crashing. After running
+\code{debug()} on the \code{pcse} function, I identified the relevant
+section of code. 
+
+\begin{verbatim}
+  if (flag) {
+    e <- using$resid
+    E <- matrix(e, nCS, nTS, byrow = TRUE)
+    E <- t(E)
+    Sigma.hat <- crossprod(E)/nTS
+    X <- as.matrix(using[, 4:dim(using)[2]])
+    omega <- kronecker(Sigma.hat, diag(1, nTS))
+    middle <- t(X) %*% omega %*% X
+    nobs <- length(e)
+    dataX <- X
+  }
+\end{verbatim}
+
+In this portion of the function, the matrix of summed covariances
+is calculated and then multiplied by the matrix of observations using
+a Kronecker product. The Kronecker product is a generalization of
+outer product of the two matrices. In other words, each of the observations
+is multiplied by each of the covariances, resulting in the ballooning
+in size of the matrix, to the point of slowing the entire function.
+Figure \ref{fig:Graphical-Representation-of} is a graphical representation
+of the stacked memory demands of a run of the \code{pcse} function.
+Essentially, the only major memory demands in the function are the
+Kronecker operations, as well as the regular matrix multiplications.
+All of the other function calls are so insignificant by comparison
+as to not even show up.
+
+\begin{figure}
+\begin{centering}
+\includegraphics[scale=0.5]{fig1}
+\par\end{centering}
+\caption{\label{fig:Graphical-Representation-of}Graphical Representation of
+Memory Demand of \protect\code{pcse} Function Calls}
+\end{figure}
+
+\section{Sparse Matrices}
+
+One approach to minimizing memory demand in large calculations is
+take advantage of the fact that many of values in a large matrix will
+be zero. A sparse matrix is useful for this task. Sparse matrices
+take a filled matrix and create an index of non-zero observations.
+The zeros are presumed to fill the rest of the matrix. Essentially,
+a sparse matrix is a map through which one can reconstruct the ``true''
+matrix. Eliminating the zeros from being held in memory directly is
+advantageous as it should severely reduce the number of operations
+which need to be completed, as the zeros are no longer being multiplied.
+
+\begin{figure}
+\begin{minipage}[t]{0.45\columnwidth}%
+\begin{center}
+\begin{tabular}{|c|c|c|c|c|}
+\hline 
+3 & 0 & 0 & 0 & 2\tabularnewline
+\hline 
+0 & 2 & 1 & 0 & 6\tabularnewline
+\hline 
+0 & 0 & 3 & 2 & 0\tabularnewline
+\hline 
+0 & 0 & 0 & 4 & 0\tabularnewline
+\hline 
+1 & 0 & 0 & 0 & 5\tabularnewline
+\hline 
+\end{tabular}
+\par\end{center}
+\caption{Full Matrix}
+%
+\end{minipage}\hfill{}%
+\begin{minipage}[t]{0.45\textwidth}%
+\begin{center}
+\begin{tabular}{|c|c|c|c|c|}
+\hline 
+3 & . & . & . & 2\tabularnewline
+\hline 
+. & 2 & 1 & . & 6\tabularnewline
+\hline 
+. & . & 3 & 2 & .\tabularnewline
+\hline 
+. & . & . & 4 & .\tabularnewline
+\hline 
+1 & . & . & . & 5\tabularnewline
+\hline 
+\end{tabular}
+\par\end{center}
+\caption{\label{fig:Sparse-Matrix}Sparse Matrix}
+%
+\end{minipage}
+\end{figure}
+
+A sparse matrix does not truly eliminate the zeros. Instead, they
+are removed and replaced with placeholder, represented in Figure \ref{fig:Sparse-Matrix}
+by periods. The zeros in question are in the covariance matrix, which
+is function of the residual calculations performed by the initial
+\code{lm} call required before running the \code{pcse}function.
+Since a great number of the correlations of the errors will be zero,
+using a sparse matrix will reduce the number of actual calculations
+performed. I expect that by their elimination the function should
+perform much more quickly and at higher dimensions.
+
+\section{Implementation}
+
+To implement this approach, I return to the relevant section of the
+function displayed above. The goal is to treat the appropriate matrices
+before they enter the \code{kronecker} call. Sparse matrix capabilities
+are available in the \code{Matrix} package in \code{R}. The package
+includes a number of improvements on the base \code{R} package \code{matrix}.
+Implementing sparse matrices into this section is trivially easy.
+
+\begin{verbatim}
+  library(pcse)
+	library(Matrix)
+	if (flag) {
+    e <- using$resid
+    E <- Matrix(e, nCS, nTS, byrow = TRUE, sparse = TRUE)
+    E <- t(E)
+    Sigma.hat <- crossprod(E)/nTS
+    X <- as.matrix(using[, 4:dim(using)[2]])
+    omega <- kronecker(Sigma.hat, diag(1, nTS))
+    middle <- t(X) %*% omega %*% X
+    nobs <- length(e)
+    dataX <- X
+  }
+\end{verbatim}
+
+The changes the code are subtle. I have simply capitalized the letter
+M in the previous \code{matrix} call, and added the argument \code{sparse = TRUE}.
+The only other changes are to load the \code{Matrix} and \code{pcse}
+libraries at the beginning of my \code{pcse\_sparse} function. The
+\code{pcse} library loading is necessary for the summary function
+to correctly interpret the model output, but otherwise has no bearing
+on the revised function.
+
+\section{Results}
+
+I then test the function on simulated data. I set five parameters
+manually (\emph{N}, \emph{T}, $\beta$, $\bar{y},$ and $\sigma^{2}$)
+and generate a random set of observations. I have confined this analysis
+to square matrices only (i.e. \emph{N = T}), as my interest is in
+testing the dimensional limits of the function. To be clear, TSCS
+analysis will very rarely involve square matrices, so these dimension
+are not meant to simulate a practical analysis, but are rather a matter
+of convenience for repeated testing. For these tests, I have arbitrarily
+set $\beta=25,$ $\bar{y}=50,$ and $\sigma^{2}=5$. Because I am
+drawing from the same seed for these data, all estimates are equal
+regardless of \emph{N x T}. For the sake of simplicity, I present
+this table only once in Figure \ref{fig:Comparison-of-Estimations}.
+
+\begin{figure}
+\centering{}%
+\begin{tabular}{cccccc}
+\toprule 
+ &  & Estimate & PCSE & \emph{t}-value & Pr $>|t|$\tabularnewline
+\midrule
+\midrule 
+Original &  &  &  &  & \tabularnewline
+\midrule 
+ & Intercept & 0.032 & 0.096 & 0.329 & 0.742\tabularnewline
+\midrule 
+ & x & 25.000 & 0.002 & 13036 & 0\tabularnewline
+\midrule 
+Sparse &  &  &  &  & \tabularnewline
+\midrule 
+ & Intercept & 0.032 & 0.096 & 0.329 & 0.742\tabularnewline
+\midrule 
+ & x & 25.000 & 0.002 & 13036 & 0\tabularnewline
+\bottomrule
+\end{tabular}\caption{\label{fig:Comparison-of-Estimations}Comparison of Estimations}
+\end{figure}
+
+The first issue to be resolved is whether the function runs and gives
+the same estimates as the original function. In all cases the estimates
+are identical. Having cleared that hurdle, the next immediate observation
+is the speed comparison between the two functions at dimensions \code{pcse}
+can handle. Using \code{benchmark} from the \code{rbenchmark} package,
+I simulate 1000 runs of both \code{pcse} and \code{pcse\_sparse}
+at the \emph{10 x 10} and \emph{100 x 100} dimensions, and 10 runs
+at the \emph{250 x 250} level. These results are presented in Figure
+\ref{fig:Benchmarking-of-1000}.
+
+\begin{figure}
+\begin{centering}
+\begin{tabular*}{1\columnwidth}{@{\extracolsep{\fill}}ccccc}
+\toprule 
+Test & \emph{N x T} & Replications & Elapsed (min) & Relative\tabularnewline
+\midrule
+\midrule 
+Original & 10 x 10 & 1000 & 0.032 & 1\tabularnewline
+\midrule
+\midrule 
+Sparse & 10 x 10 & 1000 & 0.059 & 1.831\tabularnewline
+\midrule
+\midrule 
+Original & 100 x 100 & 1000 & 32.042 & 18.247\tabularnewline
+\midrule
+\midrule 
+Sparse & 100 x 100 & 1000 & 1.756 & 1\tabularnewline
+\midrule
+\midrule 
+Original & 250 x 250 & 10 & 26.533 & 89.083\tabularnewline
+\midrule
+\midrule 
+Sparse & 500 x 500 & 10 & 0.300 & 1\tabularnewline
+\bottomrule
+\end{tabular*}
+\par\end{centering}
+\caption{\label{fig:Benchmarking-of-1000}Benchmarking of 1000 Runs}
+
+\end{figure}
+
+These results show the benefit of using sparse matrices. Although
+the time for the smallest dataset slowed slightly, the improvements
+in larger datasets are significant. The \emph{100 x 100} calculation
+is 18.247 times faster using \code{pcse\_sparse} in comparison to
+\code{pcse}, saving more than 30 minutes. The difference is even
+more dramatic for the \emph{250 x 250} calculation, with \code{pcse\_sparse}
+being 89.083 times faster. To illustrate this difference visually,
+I run \code{profvis} on \code{pcse} and \code{pcse\_sparse} back
+to back for the \emph{250 x 250} dataset. In Figure the \code{pcse\_sparse}
+results are barely visible in contrast to the amount of time taken
+by \code{pcse}.
+
+\begin{figure}
+\begin{centering}
+\includegraphics[scale=0.45]{fig2}
+\par\end{centering}
+\caption{Profile of \protect\code{pcse} and \protect\code{pcse\_sparse} for
+\emph{250 x 250} Dataset}
+
+\end{figure}
+
+Finally, I test for the maximum square dimensional capacity for each
+function. These results are presented in Figure \ref{fig:Maximum-Dimensional-Capcity}.
+I use blunt force repetition to drill down on the tipping point for
+each function. \code{pcse} failed at \emph{257 x 257} and \code{pcse\_sparse}
+failed at \emph{834 x 834}. This represents a 1,053\% increase in
+dimensional capacity.
+
+\begin{figure}
+\begin{centering}
+\begin{tabular*}{0.7\columnwidth}{@{\extracolsep{\fill}}ccc}
+\toprule 
+Test & \emph{N x T} & Elapsed (min)\tabularnewline
+\midrule
+\midrule 
+Original & 257 x 257 & 2.781\tabularnewline
+\midrule
+\midrule 
+Sparse & 834 x 834 & 6.20\tabularnewline
+\bottomrule
+\end{tabular*}
+\par\end{centering}
+\caption{\label{fig:Maximum-Dimensional-Capcity}Maximum Dimensional Capcity}
+
+\end{figure}
+
+\section{Improvement and Extension Opportunities}
+
+These results demonstrate the benefits of improved memory management
+using sparse matrices. The ease and simplicity of this change, combined
+with the massive improvement in speed and dimensional capacity, lead
+me to suggest that the use of sparse matrices could be a best practice
+for a package involving large \emph{N} matrix multiplication. This
+work demonstrates that little work is necessary to achieve these gains.
+However, I cannot be certain whether these findings generalize to
+other packages with similar issues, or if this is a special case. 
+
+This research has some limitations, leading to some opportunities
+for improvement. First, these tests were conducted on essentially
+the same dataset, set in square dimensions. This is not a realistic
+recreation of practical TSCS data, which generally has \emph{T $>$ N}
+dimensions. A more thorough exploration of the differences between
+\code{pcse} and \code{pcse\_sparse} would involve a Monte Carlo
+simulation to test dimensional flexibility. Are there any advantages
+or disadvantages to using sparse matrices in differing dimensions?
+Theoretically, I would expect that \code{pcse\_sparse} would both
+improve speed and dimensional flexibility. 
+
+Ideally, another simulation would compare time and memory usage for
+all \emph{i} from 1 to 257, the \code{pcse} maximum dimension. I
+attempted to utilize the \code{memtime} library, as well as \code{gc}
+to gather these data in a \code{for} loop, with the hopes of graphing
+the differences as dimension size increased. Due to time constraints,
+I am unable to present these results. My expectation is that both
+the time and memory demand for \code{pcse}will increase much more
+dramatically than \code{pcse\_sparse}.
+
+Finally, this research does not explore complications with any of
+the additional options available in pcse, particularly whether the
+data are balanced or unbalanced. I do not expect that there would
+be any important differences, as the use of sparse matrices seems
+to have had no impact other than memory management. However, it cannot
+be clear if implementing sparse matrices is a general improvement
+to the pcse function without testing. 
+
+\section*{Acknowledgements}
+
+I thank Clay Webb for the idea for this project, Paul Johnson for
+his patient and generous support, and Zack Roman for his help with
+the data generation code.
+
+\bibliographystyle{apalike}
+\bibliography{/Users/patrickgauding/Documents/FS17/POLS904_FS17/final_paper_POLS904/pcse_POLS904.bib}
+
+\end{document}
