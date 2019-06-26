@@ -10,3 +10,8 @@ misc/
 *.bib
 *.#*
 #*%
+*.aux
+*.lb
+*.blg
+*.log
+*.bst
