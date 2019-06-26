@@ -58,7 +58,7 @@ logicalmkup
 \bibtex_command default
 \index_command default
 \paperfontsize 11
-\spacing single
+\spacing double
 \use_hyperref false
 \papersize letterpaper
 \use_geometry true
@@ -162,6 +162,7 @@ today
 \end_layout
 
 \begin_layout Abstract
+\paragraph_spacing single
 This project demonstrates the feasibility of using sparse matrices to improve
  memory management and performance in R.
  Specifically, I modify and extend the capabilities of the 
@@ -200,22 +201,11 @@ emph{N x T}
 
  matrices in which the package fails to process the required Kronecker multiplic
 ation and crashes R.
- Then, I identify the matrix storage structure used in the original pakcage,
+ Then, I identify the matrix storage structure used in the original package,
  which I hypothesize causes memory overload.
  I provide background on the sparse matrix alternative, and provide examples
  of implementation.
- I find noticeable improvements both in terms of dimensional size and speed
- capabilities for matrices which 
-\begin_inset Flex Code
-status open
-
-\begin_layout Plain Layout
-pcse
-\end_layout
-
-\end_inset
-
- was previously able to run.
+ I find notable improvements in both dimensional size and speed capabilities.
 \end_layout
 
 \begin_layout Section
@@ -244,12 +234,239 @@ pcse
 \end_inset
 
  package is an implementation of the panel-corrected standard errors technique
- propossed by Beck and Katz [INSERT CITES].
- They argue
+ proposed by Beck and Katz 
+\begin_inset CommandInset citation
+LatexCommand citeyearpar
+key "beck1995and,beck2006random"
+
+\end_inset
+
+.
+ They argue that previous approaches to dealing with the inherent spatial
+ and temporal correlations in time-series cross-sectional data, such as
+ the 
+\begin_inset CommandInset citation
+LatexCommand citet
+key "parks1967efficient"
+
+\end_inset
+
+feasible generalized least squares (FGLS) approach, produce standard errors
+ which are inherently incorrect.
+ This is because of the assumption of GLS that the error generating process
+ is known is impossible to fulfill in practice.
+ The Parks approach assumes an AR1 autocorrelation and unit-specific serial
+ correlation.
+ Beck and Katz find these assumptions problematic, in that 
+\begin_inset Quotes eld
+\end_inset
+
+the 'interesting' parameters of the model, 
+\begin_inset ERT
+status open
+
+\begin_layout Plain Layout
+
+$
+\backslash
+beta$
+\end_layout
+
+\end_inset
+
+, do not vary across units; this assumption of pooling is at the heart of
+ TSCS analysis.
+\begin_inset Quotes erd
+\end_inset
+
+ The correction model makes blunt assumptions about the characteristics
+ of the error relationships, which may or may not exist in the data.
+\end_layout
+
+\begin_layout Standard
+Beck and Katz instead propose using ordinary least squares with correction
+ based on a block matrix of contemporaneous covariances.
+ This model offers several advantages, primarily stemming from the spherical
+ assumption of errors in OLS.
+ These errors are consistent, and so provide a less biased (i.e.
+ more correct) correction matrix.
+ The upshot is that this technique is the error corrections are derived
+ from the relationships of the errors themselves, instead of assuming relationsh
+ips, as results from cases in which PCSEs are not necessary match OLS estimates
+ (
+\begin_inset CommandInset citation
+LatexCommand citealp
+after "641"
+key "beck1995and"
+
+\end_inset
+
+).
 \end_layout
 
 \begin_layout Section
 Identifying the Issue
+\end_layout
+
+\begin_layout Standard
+The 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+pcse
+\end_layout
+
+\end_inset
+
+ package successfully estimates PCSEs for datasets of sizes practical for
+ many applications in political science, particularly country-year data.
+ However, the package breaks down and causes the R session to crash for
+ larger datasets (greater than roughly 
+\begin_inset Flex Emph
+status open
+
+\begin_layout Plain Layout
+250 x 250
+\end_layout
+
+\end_inset
+
+).
+ Additionally, the package is impractically slow as the matrix becomes larger,
+ taking roughly 2.75 minutes to calculate a near-maximum (
+\begin_inset Flex Emph
+status open
+
+\begin_layout Plain Layout
+250 x 250
+\end_layout
+
+\end_inset
+
+) successful run.
+ My assumption is that the issue causing the package to both run slowly
+ and to crash at higher levels of 
+\begin_inset Flex Emph
+status open
+
+\begin_layout Plain Layout
+N x T
+\end_layout
+
+\end_inset
+
+ are related.
+ Poor memory management could be expected to cause both the length of the
+ calculation and the R session crashing.
+ After running 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+debug()
+\end_layout
+
+\end_inset
+
+ on the 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+pcse
+\end_layout
+
+\end_inset
+
+ function, I identified the relevant section of code.
+ 
+\end_layout
+
+\begin_layout Standard
+[RELEVANT SECTION OF CODE HERE]
+\end_layout
+
+\begin_layout Standard
+In this portion of the function, the matrix of summed covariances is calculated
+ and then multiplied by the matrix of observations using a Kronecker product.
+ The Kronecker product is a generalization of outer product of the two matrices.
+ In other words, each of the observations is multiplied by each of the covarianc
+es, resulting in the ballooning in size of the matrix, to the point of slowing
+ the entire function.
+ Figure 
+\begin_inset CommandInset ref
+LatexCommand ref
+reference "fig:Graphical-Representation-of"
+
+\end_inset
+
+ is a graphical representation of the stacked memory demands of a run of
+ the 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+pcse
+\end_layout
+
+\end_inset
+
+ function.
+ Essentially, the only major memory demands in the function are the Kronecker
+ operations, as well as the regular matrix multiplications.
+ All of the other function calls are so insignificant by comparison as to
+ not even show up.
+\end_layout
+
+\begin_layout Standard
+\begin_inset Float figure
+wide false
+sideways false
+status open
+
+\begin_layout Plain Layout
+\align center
+\begin_inset Graphics
+	filename fig1.png
+	scale 50
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+\begin_inset Caption Standard
+
+\begin_layout Plain Layout
+\begin_inset CommandInset label
+LatexCommand label
+name "fig:Graphical-Representation-of"
+
+\end_inset
+
+Graphical Representation of Memory Demand of 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+pcse
+\end_layout
+
+\end_inset
+
+ Function Calls
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\end_inset
+
+
 \end_layout
 
 \begin_layout Section
@@ -257,6 +474,54 @@ Sparse Matrices
 \end_layout
 
 \begin_layout Standard
+One approach to minimizing memory demand in large calculations is take advantage
+ of the fact that many of values in a large matrix will be zero.
+ A sparse matrix is useful for this task.
+ Sparse matrices take a filled matrix and create an index of non-zero observatio
+ns.
+ The zeros are presumed to fill the rest of the matrix.
+ Essentially, a sparse matrix is a map through which one can reconstruct
+ the 
+\begin_inset Quotes eld
+\end_inset
+
+true
+\begin_inset Quotes erd
+\end_inset
+
+ matrix.
+ Eliminating the zeros from being held in memory directly is advantageous
+ as it should severely reduce the number of operations which need to be
+ completed, as the zeros are no longer being multiplied.
+\end_layout
+
+\begin_layout Standard
+\begin_inset Float figure
+wide false
+sideways false
+status open
+
+\begin_layout Plain Layout
+\begin_inset Box Frameless
+position "t"
+hor_pos "c"
+has_inner_box 1
+inner_pos "t"
+use_parbox 0
+use_makebox 0
+width "45col%"
+special "none"
+height "1in"
+height_special "totalheight"
+thickness "0.4pt"
+separation "3pt"
+shadowsize "4pt"
+framecolor "black"
+backgroundcolor "none"
+status open
+
+\begin_layout Plain Layout
+\align center
 \begin_inset Tabular
 <lyxtabular version="3" rows="5" columns="5">
 <features tabularvalignment="middle">
@@ -507,11 +772,45 @@ Sparse Matrices
 
 \end_layout
 
-\begin_layout Standard
-here's some filler to separate the tables
+\begin_layout Plain Layout
+\begin_inset Caption Standard
+
+\begin_layout Plain Layout
+Full Matrix
 \end_layout
 
-\begin_layout Standard
+\end_inset
+
+
+\end_layout
+
+\end_inset
+
+
+\begin_inset space \hfill{}
+\end_inset
+
+
+\begin_inset Box Frameless
+position "t"
+hor_pos "c"
+has_inner_box 1
+inner_pos "t"
+use_parbox 0
+use_makebox 0
+width "45text%"
+special "none"
+height "1in"
+height_special "totalheight"
+thickness "0.4pt"
+separation "3pt"
+shadowsize "4pt"
+framecolor "black"
+backgroundcolor "none"
+status open
+
+\begin_layout Plain Layout
+\align center
 \begin_inset Tabular
 <lyxtabular version="3" rows="5" columns="5">
 <features tabularvalignment="middle">
@@ -619,7 +918,7 @@ here's some filler to separate the tables
 \begin_inset Text
 
 \begin_layout Plain Layout
-
+.
 \end_layout
 
 \end_inset
@@ -760,18 +1059,1866 @@ here's some filler to separate the tables
 \end_inset
 
 
+\end_layout
+
+\begin_layout Plain Layout
+\begin_inset Caption Standard
+
+\begin_layout Plain Layout
+\begin_inset CommandInset label
+LatexCommand label
+name "fig:Sparse-Matrix"
+
+\end_inset
+
+Sparse Matrix
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+A sparse matrix does not truly eliminate the zeros.
+ Instead, they are removed and replaced with placeholder, represented in
+ Figure 
+\begin_inset CommandInset ref
+LatexCommand ref
+reference "fig:Sparse-Matrix"
+
+\end_inset
+
+ by periods.
+ The zeros in question are in the covariance matrix, which is function of
+ the residual calculations performed by the initial 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+lm
+\end_layout
+
+\end_inset
+
+ call required before running the 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+pcse
+\end_layout
+
+\end_inset
+
+function.
+ Since a great number of the correlations of the errors will be zero, using
+ a sparse matrix will reduce the number of actual calculations performed.
+ I expect that by their elimination the function should perform much more
+ quickly and at higher dimensions.
 \end_layout
 
 \begin_layout Section
-Approach and Implementation
+Implementation
+\end_layout
+
+\begin_layout Standard
+To implement this approach, I return to the relevant section of the function
+ displayed above.
+ The goal is to treat the appropriate matrices before they enter the 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+kronecker
+\end_layout
+
+\end_inset
+
+ call.
+ Sparse matrix capabilities are available in the 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+Matrix
+\end_layout
+
+\end_inset
+
+ package in 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+R
+\end_layout
+
+\end_inset
+
+.
+ The package includes a number of improvements on the base 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+R
+\end_layout
+
+\end_inset
+
+ package 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+matrix
+\end_layout
+
+\end_inset
+
+.
+ Implementing sparse matrices into this section is trivially easy.
+\end_layout
+
+\begin_layout Standard
+[INSERT RELEVANT CODE HERE]
+\end_layout
+
+\begin_layout Standard
+The changes the code are subtle.
+ I have simply capitalized the letter M in the previous 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+matrix
+\end_layout
+
+\end_inset
+
+ call, and added the argument 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+sparse = TRUE
+\end_layout
+
+\end_inset
+
+.
+ The only other changes are to load the 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+Matrix
+\end_layout
+
+\end_inset
+
+ and 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+pcse
+\end_layout
+
+\end_inset
+
+ libraries at the beginning of my 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+pcse_sparse
+\end_layout
+
+\end_inset
+
+ function.
+ The 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+pcse
+\end_layout
+
+\end_inset
+
+ library loading is necessary for the summary function to correctly interpret
+ the model output, but otherwise has no bearing on the revised function.
 \end_layout
 
 \begin_layout Section
 Results
 \end_layout
 
+\begin_layout Standard
+I then test the function on simulated data.
+ I set five parameters manually (
+\begin_inset Flex Emph
+status open
+
+\begin_layout Plain Layout
+N
+\end_layout
+
+\end_inset
+
+, 
+\begin_inset Flex Emph
+status open
+
+\begin_layout Plain Layout
+T
+\end_layout
+
+\end_inset
+
+, 
+\begin_inset Formula $\beta$
+\end_inset
+
+, 
+\begin_inset Formula $\bar{y},$
+\end_inset
+
+ and 
+\begin_inset Formula $\sigma^{2}$
+\end_inset
+
+) and generate a random set of observations.
+ I have confined this analysis to square matrices only (i.e.
+ 
+\begin_inset ERT
+status open
+
+\begin_layout Plain Layout
+
+
+\backslash
+emph{N = T}
+\end_layout
+
+\end_inset
+
+), as my interest is in testing the dimensional limits of the function.
+ To be clear, TSCS analysis will very rarely involve square matrices, so
+ these dimension are not meant to simulate a practical analysis, but are
+ rather a matter of convenience for repeated testing.
+ For these tests, I have arbitrarily set 
+\begin_inset Formula $\beta=25,$
+\end_inset
+
+ 
+\begin_inset Formula $\bar{y}=50,$
+\end_inset
+
+ and 
+\begin_inset Formula $\sigma^{2}=5$
+\end_inset
+
+.
+ Because I am drawing from the same seed for these data, all estimates are
+ equal regardless of 
+\begin_inset ERT
+status open
+
+\begin_layout Plain Layout
+
+
+\backslash
+emph{N x T}
+\end_layout
+
+\end_inset
+
+.
+ For the sake of simplicity, I present this table only once in Figure 
+\begin_inset CommandInset ref
+LatexCommand ref
+reference "fig:Comparison-of-Estimations"
+
+\end_inset
+
+.
+\end_layout
+
+\begin_layout Standard
+\begin_inset Float figure
+wide false
+sideways false
+status open
+
+\begin_layout Plain Layout
+\align center
+\begin_inset Tabular
+<lyxtabular version="3" rows="7" columns="6">
+<features booktabs="true" tabularvalignment="middle">
+<column alignment="center" valignment="top">
+<column alignment="center" valignment="top">
+<column alignment="center" valignment="top">
+<column alignment="center" valignment="top">
+<column alignment="center" valignment="top">
+<column alignment="center" valignment="top">
+<row>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+Estimate
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+PCSE
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+\begin_inset ERT
+status open
+
+\begin_layout Plain Layout
+
+
+\backslash
+emph{t}
+\end_layout
+
+\end_inset
+
+-value
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" leftline="true" rightline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+Pr 
+\begin_inset ERT
+status open
+
+\begin_layout Plain Layout
+
+$>|t|$
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\end_inset
+</cell>
+</row>
+<row>
+<cell alignment="center" valignment="top" topline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+Original
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" leftline="true" rightline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\end_inset
+</cell>
+</row>
+<row>
+<cell alignment="center" valignment="top" topline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+Intercept
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+0.032
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+0.096
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+0.329
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" leftline="true" rightline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+0.742
+\end_layout
+
+\end_inset
+</cell>
+</row>
+<row>
+<cell alignment="center" valignment="top" topline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+x
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+25.000
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+0.002
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+13036
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" leftline="true" rightline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+0
+\end_layout
+
+\end_inset
+</cell>
+</row>
+<row>
+<cell alignment="center" valignment="top" topline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+Sparse
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" leftline="true" rightline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\end_inset
+</cell>
+</row>
+<row>
+<cell alignment="center" valignment="top" topline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+Intercept
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+0.032
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+0.096
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+0.329
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" leftline="true" rightline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+0.742
+\end_layout
+
+\end_inset
+</cell>
+</row>
+<row>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+x
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+25.000
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+0.002
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+13036
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" leftline="true" rightline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+0
+\end_layout
+
+\end_inset
+</cell>
+</row>
+</lyxtabular>
+
+\end_inset
+
+
+\begin_inset Caption Standard
+
+\begin_layout Plain Layout
+\begin_inset CommandInset label
+LatexCommand label
+name "fig:Comparison-of-Estimations"
+
+\end_inset
+
+Comparison of Estimations
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+The first issue to be resolved is whether the function runs and gives the
+ same estimates as the original function.
+ In all cases the estimates are identical.
+ Having cleared that hurdle, the next immediate observation is the speed
+ comparison between the two functions at dimensions 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+pcse
+\end_layout
+
+\end_inset
+
+ can handle.
+ Using 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+benchmark
+\end_layout
+
+\end_inset
+
+ from the 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+rbenchmark
+\end_layout
+
+\end_inset
+
+ package, I simulate 1000 runs of both 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+pcse
+\end_layout
+
+\end_inset
+
+ and 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+pcse_sparse
+\end_layout
+
+\end_inset
+
+ at the 
+\begin_inset ERT
+status open
+
+\begin_layout Plain Layout
+
+
+\backslash
+emph{10 x 10}
+\end_layout
+
+\end_inset
+
+ and 
+\begin_inset ERT
+status open
+
+\begin_layout Plain Layout
+
+
+\backslash
+emph{100 x 100}
+\end_layout
+
+\end_inset
+
+ dimensions, and 10 runs at the 
+\begin_inset ERT
+status open
+
+\begin_layout Plain Layout
+
+
+\backslash
+emph{250 x 250}
+\end_layout
+
+\end_inset
+
+ level.
+ These results are presented in Figure 
+\begin_inset CommandInset ref
+LatexCommand ref
+reference "fig:Benchmarking-of-1000"
+
+\end_inset
+
+.
+\end_layout
+
+\begin_layout Standard
+\begin_inset Float figure
+wide false
+sideways false
+status open
+
+\begin_layout Plain Layout
+\align center
+\begin_inset Tabular
+<lyxtabular version="3" rows="7" columns="5">
+<features booktabs="true" tabularvalignment="middle" tabularwidth="100col%">
+<column alignment="center" valignment="top" width="0pt">
+<column alignment="center" valignment="top" width="0pt">
+<column alignment="center" valignment="top" width="0pt">
+<column alignment="center" valignment="top" width="0pt">
+<column alignment="center" valignment="top" width="0pt">
+<row>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+Test
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+\begin_inset ERT
+status open
+
+\begin_layout Plain Layout
+
+
+\backslash
+emph{N x T}
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+Replications
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+Elapsed (min)
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+Relative
+\end_layout
+
+\end_inset
+</cell>
+</row>
+<row>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+Original
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+10 x 10
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+1000
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+0.032
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+1
+\end_layout
+
+\end_inset
+</cell>
+</row>
+<row>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+Sparse
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+10 x 10
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+1000
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+0.059
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+1.831
+\end_layout
+
+\end_inset
+</cell>
+</row>
+<row>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+Original
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+100 x 100
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+1000
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+32.042
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+18.247
+\end_layout
+
+\end_inset
+</cell>
+</row>
+<row>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+Sparse
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+100 x 100
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+1000
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+1.756
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+1
+\end_layout
+
+\end_inset
+</cell>
+</row>
+<row>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+Original
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+250 x 250
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+10
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+26.533
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+89.083
+\end_layout
+
+\end_inset
+</cell>
+</row>
+<row>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+Sparse
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+500 x 500
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+10
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+0.300
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+1
+\end_layout
+
+\end_inset
+</cell>
+</row>
+</lyxtabular>
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+\begin_inset Caption Standard
+
+\begin_layout Plain Layout
+\begin_inset CommandInset label
+LatexCommand label
+name "fig:Benchmarking-of-1000"
+
+\end_inset
+
+Benchmarking of 1000 Runs
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+These results show the benefit of using sparse matrices.
+ Although the time for the smallest dataset slowed slightly, the improvements
+ in larger datasets are significant.
+ The 
+\begin_inset ERT
+status open
+
+\begin_layout Plain Layout
+
+
+\backslash
+emph{100 x 100}
+\end_layout
+
+\end_inset
+
+ calculation is 18.247 times faster using 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+pcse_sparse
+\end_layout
+
+\end_inset
+
+ in comparison to 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+pcse
+\end_layout
+
+\end_inset
+
+, saving more than 30 minutes.
+ The difference is even more dramatic for the 
+\begin_inset ERT
+status open
+
+\begin_layout Plain Layout
+
+
+\backslash
+emph{250 x 250}
+\end_layout
+
+\end_inset
+
+ calculation, with 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+pcse_sparse
+\end_layout
+
+\end_inset
+
+ being 89.083 times faster.
+ To illustrate this difference visually, I run 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+profvis
+\end_layout
+
+\end_inset
+
+ on 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+pcse
+\end_layout
+
+\end_inset
+
+ and 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+pcse_sparse
+\end_layout
+
+\end_inset
+
+ back to back for the 
+\begin_inset ERT
+status open
+
+\begin_layout Plain Layout
+
+
+\backslash
+emph{250 x 250}
+\end_layout
+
+\end_inset
+
+ dataset.
+ In Figure the 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+pcse_sparse
+\end_layout
+
+\end_inset
+
+ results are barely visible in contrast to the amount of time taken by 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+pcse
+\end_layout
+
+\end_inset
+
+.
+\end_layout
+
+\begin_layout Standard
+\begin_inset Float figure
+wide false
+sideways false
+status open
+
+\begin_layout Plain Layout
+\align center
+\begin_inset Graphics
+	filename fig2.png
+	scale 45
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+\begin_inset Caption Standard
+
+\begin_layout Plain Layout
+Profile of 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+pcse
+\end_layout
+
+\end_inset
+
+ and 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+pcse_sparse
+\end_layout
+
+\end_inset
+
+ for 
+\begin_inset ERT
+status open
+
+\begin_layout Plain Layout
+
+
+\backslash
+emph{250 x 250}
+\end_layout
+
+\end_inset
+
+ Dataset
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+Finally, I test for the maximum square dimensional capacity for each function.
+ These results are presented in Figure 
+\begin_inset CommandInset ref
+LatexCommand ref
+reference "fig:Maximum-Dimensional-Capcity"
+
+\end_inset
+
+.
+ I use blunt force repetition to drill down on the tipping point for each
+ function.
+ 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+pcse
+\end_layout
+
+\end_inset
+
+ failed at 
+\begin_inset ERT
+status open
+
+\begin_layout Plain Layout
+
+
+\backslash
+emph{257 x 257}
+\end_layout
+
+\end_inset
+
+ and 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+pcse_sparse
+\end_layout
+
+\end_inset
+
+ failed at 
+\begin_inset ERT
+status open
+
+\begin_layout Plain Layout
+
+
+\backslash
+emph{834 x 834}
+\end_layout
+
+\end_inset
+
+.
+ This represents a 1,053% increase in dimensional capacity.
+\end_layout
+
+\begin_layout Standard
+\begin_inset Float figure
+wide false
+sideways false
+status open
+
+\begin_layout Plain Layout
+\align center
+\begin_inset Tabular
+<lyxtabular version="3" rows="3" columns="3">
+<features booktabs="true" tabularvalignment="middle" tabularwidth="70col%">
+<column alignment="center" valignment="top" width="0pt">
+<column alignment="center" valignment="top" width="0pt">
+<column alignment="center" valignment="top" width="0pt">
+<row>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+Test
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+\begin_inset ERT
+status open
+
+\begin_layout Plain Layout
+
+
+\backslash
+emph{N x T}
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+Elapsed (min)
+\end_layout
+
+\end_inset
+</cell>
+</row>
+<row>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+Original
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+257 x 257
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+2.781
+\end_layout
+
+\end_inset
+</cell>
+</row>
+<row>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+Sparse
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+834 x 834
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+6.20
+\end_layout
+
+\end_inset
+</cell>
+</row>
+</lyxtabular>
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+\begin_inset Caption Standard
+
+\begin_layout Plain Layout
+\begin_inset CommandInset label
+LatexCommand label
+name "fig:Maximum-Dimensional-Capcity"
+
+\end_inset
+
+Maximum Dimensional Capcity
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
 \begin_layout Section
 Improvement and Extension Opportunities
+\end_layout
+
+\begin_layout Standard
+These results demonstrate the benefits of improved memory management using
+ sparse matrices.
+ The ease and simplicity of this change, combined with the massive improvement
+ in speed and dimensional capacity, lead me to suggest that the use of sparse
+ matrices could be a best practice for a package involving large 
+\begin_inset ERT
+status open
+
+\begin_layout Plain Layout
+
+
+\backslash
+emph{N}
+\end_layout
+
+\end_inset
+
+ matrix multiplication.
+ This work demonstrates that little work is necessary to achieve these gains.
+ However, I cannot be certain whether these findings generalize to other
+ packages with similar issues, or if this is a special case.
+ 
+\end_layout
+
+\begin_layout Standard
+This research has some limitations, leading to some opportunities for improvemen
+t.
+ First, these tests were conducted on essentially the same dataset, set
+ in square dimensions.
+ This is not a realistic recreation of practical TSCS data, which generally
+ has 
+\begin_inset ERT
+status open
+
+\begin_layout Plain Layout
+
+
+\backslash
+emph{T $>$ N}
+\end_layout
+
+\end_inset
+
+ dimensions.
+ A more thorough exploration of the differences between 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+pcse
+\end_layout
+
+\end_inset
+
+ and 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+pcse_sparse
+\end_layout
+
+\end_inset
+
+ would involve a Monte Carlo simulation to test dimensional flexibility.
+ Are there any advantages or disadvantages to using sparse matrices in differing
+ dimensions? Theoretically, I would expect that 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+pcse_sparse
+\end_layout
+
+\end_inset
+
+ would both improve speed and dimensional flexibility.
+ 
+\end_layout
+
+\begin_layout Standard
+Ideally, another simulation would compare time and memory usage for all
+ 
+\begin_inset ERT
+status open
+
+\begin_layout Plain Layout
+
+
+\backslash
+emph{i}
+\end_layout
+
+\end_inset
+
+ from 1 to 257, the 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+pcse
+\end_layout
+
+\end_inset
+
+ maximum dimension.
+ I attempted to utilize the 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+memtime
+\end_layout
+
+\end_inset
+
+ library, as well as 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+gc
+\end_layout
+
+\end_inset
+
+ to gather these data in a 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+for
+\end_layout
+
+\end_inset
+
+ loop, with the hopes of graphing the differences as dimension size increased.
+ Due to time constraints, I am unable to present these results.
+ My expectation is that both the time and memory demand for 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+pcse
+\end_layout
+
+\end_inset
+
+will increase much more dramatically than 
+\begin_inset Flex Code
+status open
+
+\begin_layout Plain Layout
+pcse_sparse
+\end_layout
+
+\end_inset
+
+.
+\end_layout
+
+\begin_layout Standard
+Finally, this research does not explore complications with any of the additional
+ options available in pcse, particularly whether the data are balanced or
+ unbalanced.
+ I do not expect that there would be any important differences, as the use
+ of sparse matrices seems to have had no impact other than memory management.
+ However, it cannot be clear if implementing sparse matrices is a general
+ improvement to the pcse function without testing.
+ 
+\end_layout
+
+\begin_layout Section*
+Acknowledgements
+\end_layout
+
+\begin_layout Standard
+I thank Clay Webb for the idea for this project, Paul Johnson for his patient
+ and generous support, and Zack Roman for his help with the data generation
+ code.
+\end_layout
+
+\begin_layout Standard
+\begin_inset CommandInset bibtex
+LatexCommand bibtex
+bibfiles "/Users/patrickgauding/Documents/FS17/POLS904_FS17/final_paper_POLS904/pcse_POLS904"
+options "apalike"
+
+\end_inset
+
+
 \end_layout
 
 \end_body
