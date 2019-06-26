@@ -1,0 +1,12 @@
+*~
+/lit/
+.DS_Store
+.Rhistory
+*.pdf
+*.docx
+*.doc
+KU-thesis/
+misc/
+*.bib
+*.#*
+#*%
