@@ -130,33 +130,6 @@ today
 
 \end_layout
 
-\begin_layout Enumerate
-What's wrong
-\end_layout
-
-\begin_deeper
-\begin_layout Enumerate
-Inefficient matrix transformation (i.e.
- calculating entire matrix when half of it is already know due to symmetry.
-\end_layout
-
-\end_deeper
-\begin_layout Enumerate
-What triggers it
-\end_layout
-
-\begin_layout Enumerate
-Identify issue
-\end_layout
-
-\begin_layout Enumerate
-Explain/attempt fix
-\end_layout
-
-\begin_layout Enumerate
-Package
-\end_layout
-
 \begin_layout Standard
 The 
 \begin_inset Flex Code
@@ -214,7 +187,9 @@ t()
  However, since the output matrix of PCSE is a symmetrical matrix, this
  is wastefully inefficient, in that calculations are run twice on information
  which is succinctly contained in one half of the matrix.
- Next, I will implement a QR decomposition process into the package
+ Next, I will implement a QR decomposition process into the package, which
+ will ideally improve efficiency and allow for larger numbers of cases.
+ Finally, I will pursue packaging my improvements as a new PCSE package.
 \end_layout
 
 \end_body
